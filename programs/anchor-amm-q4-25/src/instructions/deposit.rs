@@ -63,40 +63,30 @@ pub struct Deposit<'info> {
 }
 
 impl<'info> Deposit<'info> {
-    pub fn deposit(
-        &mut self,
-        amount: u64, // Amount of LP tokens that the user wants to "claim"
-        max_x: u64,  // Maximum amount of token X that the user is willing to deposit
-        max_y: u64,  // Maximum amount of token Y that the user is willing to deposit
-    ) -> Result<()> {
-        require!(self.config.locked == false, AmmError::PoolLocked);
+    pub fn deposit(&mut self, amount: u64, max_x: u64, max_y: u64) -> Result<()> {
+        require!(!self.config.locked, AmmError::PoolLocked);
         require!(amount != 0, AmmError::InvalidAmount);
 
-        let (x, y) = match self.mint_lp.supply == 0
-            && self.vault_x.amount == 0
-            && self.vault_y.amount == 0
-        {
-            true => (max_x, max_y),
-            false => {
-                let amounts = ConstantProduct::xy_deposit_amounts_from_l(
-                    self.vault_x.amount,
-                    self.vault_y.amount,
-                    self.mint_lp.supply,
-                    amount,
-                    6,
-                )
-                .unwrap();
-                (amounts.x, amounts.y)
-            }
+        let is_pool_empty = self.mint_lp.supply == 0 && self.vault_x.amount == 0 && self.vault_y.amount == 0;
+        
+        let (x, y) = if is_pool_empty {
+            (max_x, max_y)
+        } else {
+            let amounts = ConstantProduct::xy_deposit_amounts_from_l(
+                self.vault_x.amount,
+                self.vault_y.amount,
+                self.mint_lp.supply,
+                amount,
+                6,
+            )
+            .unwrap();
+            (amounts.x, amounts.y)
         };
 
         require!(x <= max_x && y <= max_y, AmmError::SlippageExceeded);
 
-        // deposit token x
         self.deposit_tokens(true, x)?;
-        // deposit token y
         self.deposit_tokens(false, y)?;
-        // mint lp tokens
         self.mint_lp_tokens(amount)
     }
 
